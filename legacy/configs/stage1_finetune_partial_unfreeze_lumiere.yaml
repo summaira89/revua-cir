@@ -1,0 +1,116 @@
+# Stage-1 fine-tuning: PARTIAL ViT-L/14 unfreeze (freeze_layers=20 of 24
+# vision layers, all 12 text layers frozen), CIRR-only, on the Sunway
+# Lumiere cluster (NVIDIA L4, ~23GB, partition gpu-4c-l4-1g).
+#
+# This is the Lumiere counterpart to configs/stage1_finetune.yaml, which was
+# sized for the local 8GB 4060 (bs=4, 90.6M trainable CLIP params -- see that
+# file's history for why partial freeze was adopted at all). Same
+# freeze_layers=20 architecture, but re-batched for the L4's much larger
+# headroom instead of inheriting the 4060's bs=4.
+#
+# batch_size/lr MEASURED 2026-08-22 via lumiere/probe_partial_unfreeze_l4.sbatch
+# (two independent runs, probe_partial_6000.log / 6001.log, near-identical
+# results -- 20 real train() steps per batch size on this exact GPU type):
+#   bs=16: peak 13.78 GB reserved, 1.0 s/step steady -- comfortable
+#   bs=24: peak 18.12 GB reserved, 2.28 s/step avg   -- ~4.9 GB headroom, CHOSEN
+#   bs=32: peak 22.31 GB reserved, 2.83 s/step avg   -- only ~0.7 GB headroom
+#          on a 23.03 GB card, too tight per this project's own margin
+#          standard (see stage1_finetune.yaml's bs=12 pick over bs=16/32 for
+#          the same reason) and barely faster per-step than bs=24 anyway
+#   bs=48: OOM immediately on the first batch
+# bs=24 chosen: safe margin, and bs=32's throughput gain (2.83 vs 2.28 s/step)
+# does not justify the OOM risk. lr rescaled linearly from the local 4060
+# bs=4 anchor (2.5e-6): 2.5e-6 * (24/4) = 1.5e-5.
+backbone:
+  kind: clip
+  pretrained_name: openai/clip-vit-large-patch14
+  freeze_backbone: false
+  freeze_layers: 20
+  embed_dim: 768
+fusion:
+  num_heads: 8
+  num_layers: 2
+  ffn_mult: 4
+  dropout: 0.1
+  gate_hidden_mult: 2
+  use_learned_temperature: true
+  init_temperature: 0.07
+  # Pinned explicitly (2026-09-09, code-audit finding): must not rely on the
+  # ReVUAConfig dataclass default, since the same YAML could otherwise launch
+  # a different architecture after a future code change to that default.
+  use_residual_composition: true
+  residual_alpha_init: 0.05
+attribute_parser:
+  enabled: true
+  parser_backend: rule
+  max_attributes: 8
+  attribute_vocab_size: 512
+  hidden_dim: 512
+reverse_verifier:
+  enabled: true
+  tier: tier1_inverse_consistency
+  top_k: 10
+  hidden_dim: 512
+  tier2_num_layers: 2
+uncertainty_gate:
+  enabled: true
+  variance_hidden_dim: 256
+  neighborhood_k: 10
+  coordination_hidden_dim: 256
+  calibration_temperature_init: 1.0
+  fuse_reverse_disagreement: true
+loss:
+  lambda_disentangle: 0.3
+  lambda_reverse: 0.5
+  lambda_uncertainty: 0.2
+  label_smoothing: 0.1
+  hard_negative_weight: 0.0
+  reverse_negative_margin: 0.2
+data:
+  # Same Lumiere-cluster dataset path as stage1_finetune_full_unfreeze.yaml
+  # (old cir_project's already-downloaded+repaired CIRR/CIRCO data).
+  root: ./datasets
+  train_datasets:
+  - cirr
+  val_dataset: cirr
+  image_size: 224
+  num_workers: 2
+  batch_size: 24  # measured 2026-08-22, see header
+  eval_batch_size: 128
+  noise_injection_rate: 0.0
+optim:
+  # lr = 2.5e-6 * (24/4) = 1.5e-5, linearly rescaled from stage1_finetune.yaml's
+  # bs=4 local-4060 anchor. See header for the batch-size probe this depends on.
+  lr: 1.5e-05  # measured 2026-08-22, see header
+  backbone_lr_mult: 0.1
+  weight_decay: 0.05
+  warmup_ratio: 0.06
+  scheduler: cosine
+  max_epochs: 30
+  grad_clip_norm: 5.0
+  amp: true
+  ema_decay: 0.0
+  use_gradcache: false
+early_stopping:
+  enabled: true
+  monitor: val_recall_at_1
+  mode: max
+  patience: 5
+  min_delta: 0.0001
+  warmup_epochs: 2
+run:
+  seed: 42
+  output_dir: runs/ablation_partial_unfreeze
+  log_every: 25
+  eval_every_epochs: 1
+  # Reduced from 3 -> 1 (2026-09-03): only the single best checkpoint per run
+  # is ever loaded (best_checkpoint() in run_ablation_matrix.py /
+  # diagnose_rv.py / verify_rerank_gain.py all pick by best_metric, not by
+  # "most recent" or "all of them"). Keeping 3 per combo across a 4-combo
+  # matrix run was the direct cause of the cluster home filesystem hitting
+  # 100% full mid-run (disk audit + cleanup, 2026-09-03) -- see
+  # lumiere/cleanup_redundant_checkpoints.sbatch.
+  save_top_k: 1
+  device: cuda
+  deterministic: false
+  checkpoint_every_n_steps: 50

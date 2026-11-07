@@ -1,0 +1,25 @@
+__pycache__/
+*.pyc
+.venv*/
+*.pt
+*.pth
+*.ckpt
+*.npz
+*.npy
+*.jsonl
+*.log
+*.zip
+*.tar*
+runs/
+data/
+datasets/
+checkpoints/
+
+# Include dataset-loader source code
+!revua_cir/data/
+revua_cir/data/*
+!revua_cir/data/__init__.py
+!revua_cir/data/collate.py
+!revua_cir/data/datasets.py
+!revua_cir/data/tokenizer.py
+!revua_cir/data/transforms.py

@@ -1,0 +1,13 @@
+cff-version: 1.2.0
+message: "If you use this code, please cite it as below."
+title: "ReVUA-CIR: code for Auditing Learned Verification in Composed Image Retrieval"
+authors:
+  - family-names: Nosheen
+    given-names: Summaira
+    affiliation: University of Central Punjab
+  - family-names: Mustafa
+    given-names: Ghulam
+    affiliation: University of Central Punjab
+version: 1.0.0
+license: MIT
+repository-code: "https://github.com/USERNAME/revua-cir"

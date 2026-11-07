@@ -1,0 +1,58 @@
+{
+  "schema": "circo-towers/1",
+  "split": "val",
+  "n_queries": 220,
+  "n_rows": 2153,
+  "source": "checkpoint",
+  "checkpoint_load": {
+    "loaded": 654,
+    "missing_frozen": 0,
+    "unexpected": 0
+  },
+  "parity_base": null,
+  "output_name": "circo_towers.npz",
+  "manifest": {
+    "schema": "bbnv-run-manifest/1",
+    "script": "circo_towers.py",
+    "args": {
+      "config": "../edir_work/laptop_config.yaml",
+      "circo_root": "../datasets/circo",
+      "cache": "../rv_score_cache_circo_fc_aep_rv.jsonl",
+      "module_combo": "fc",
+      "checkpoint": "../checkpoints/ablation_collective_v3/fc/epoch003.pt",
+      "pretrained": false,
+      "reproduce_base": false,
+      "out_dir": "../revision_work/circo_towers_fc_2026-11-04",
+      "batch_size": 32,
+      "device": "cuda"
+    },
+    "config_sha256": "08d8cd16d78c4972e6558125224c8455015259cd2dd1344a02001a0726d50e15",
+    "cache_sha256": "5c1c77d4457d7ec7b72f914b6763d53e69493110358e68bd797bdba63195ba6b",
+    "annotations_sha256": "6b31a1dbc3c85627501d9a250f87708f24a27d74d6a65360b6ddd2537a154d04",
+    "checkpoint_sha256": "8d5c6932ec5183d464d180ac27096c029f8f749afebe34da627f107109edf9dc",
+    "source_sha256": {
+      "bbnv_core.py": "a902a2a51fbdf6544843e77b5b04629ba83a4075ad983b7a2cf30d875c3f78f9",
+      "bbnv_partition.py": "2e83d45c25c7cc61696a4c6ddfcb1a9037279d60db666499dd70f3a6a1224c73",
+      "bbnv_oracle.py": "941331cca6d5d7342eed061dbb073f40deb86689555b9ebc289dfd4217455d44",
+      "bbnv_profile.py": "90ecc96b6a7fae73535947f546b951449207b57c9c36edfce9e7848ccd17349e",
+      "bbnv_provenance.py": "eea2a754939058b1558a0850f03234ded1bc7d7d4f9be30572b144662da26752",
+      "bbnv_manifest.py": "5790bac76d84a92cbb3e807d891a1cae9b1710928623bc3e76ceb64295e1dfe8",
+      "bbnv_extract.py": "e4e532d1480e8b557e943143f676f7c13a91b882ef416db5adb4b18e770857f5",
+      "bbnv_train.py": "339f21c3535ffacca9575a1a5b42570fdbf73ccbfab0d2fc41a07b23a55a9421",
+      "bbnv_score.py": "a82caa458f8420965018debc6494ec96cc779ccd4c959747236ded25fba7a54d",
+      "bbnv_analyze.py": "4d1ee08c36756a93dd118537facada1d84f2e53d33bad92f55553162a23c7638",
+      "cirr_split_windows.py": "aaabd1c68b26a5894c9f4770e6ad043b647748999d261d57b99a7880c6173d97",
+      "cirr_external_windows.py": "e0ae4f5e5f4bd7aa1cf69cf4ceb58b779016c79e0db3c99cbcac224e58766833",
+      "circo_towers.py": "4d5eb61eb24cf343f65cc2686b2b1b571d35b2b6690d2884abc5fd3ce4cfbd6b"
+    },
+    "runtime": {
+      "torch": "2.11.0+cu128",
+      "gpu": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "batch_size": 32
+    }
+  },
+  "wall_seconds": 94.4,
+  "output_files": {
+    "circo_towers.npz": "7cf37f60ab3ddb6ea78b4f0bf5e99ab9e07d2c0dc92a66a61a843b1990cbc2b1"
+  }
+}

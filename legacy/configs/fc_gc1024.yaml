@@ -1,0 +1,116 @@
+# FC-only, CIRR-only, frozen backbone, GradCache at batch 1024.
+#
+# Isolates the in-batch-negative count against runs/fc_cirr_only (bs=64, R@10
+# 69.20). Everything else held fixed, so the difference is attributable.
+#
+#   negatives:  63 -> 1023        (InfoNCE MI ceiling log(N): +67%)
+#   memory:     measured 3.43 GB peak -- LESS than the bs=64 run
+#   speed:      ~21 samp/s -> ~22 min/epoch, but only 27 steps/epoch (vs 441)
+#   lr:         2e-5 -> 3.2e-4, LINEAR scaling rule (standard for large-batch
+#               contrastive training -- unscaled, a first test run plateaued at
+#               loss 5.07 after a full epoch vs 2.45 for bs=64, purely from too
+#               few optimizer updates, not a training problem)
+#   max_epochs: 30 -> 60, since each epoch is 1/16 the updates
+#
+# hard_negative_weight is 0: its in-batch reweighting is not chunk-decomposable
+# (silently scaled gradients 0.48x during development) and is redundant once the
+# batch already supplies 1023 negatives.
+
+# UPDATE 2026-08-11: the real run hit the SAME commit-charge crash as the
+# num_workers=8 bug at bs=64 -- "Couldn't open shared file mapping ... error
+# code: 1455" -- even at num_workers=2, because the DataLoader was collating
+# the full LOGICAL batch (1024 samples, ~1.2 GB of tensors) before gradcache
+# ever got to chunk it internally. num_workers wasn't really the variable;
+# batch_size was. Setting num_workers=0 "fixed" it but made every epoch ~2.3x
+# slower (all decode/resize/totensor for 1024 images serialized on the main
+# thread with zero overlap against GPU compute).
+#
+# Real fix (train.py + gradcache.py): when use_gradcache is on, the DataLoader's
+# own batch_size is set to gradcache_chunk_size (32), not data.batch_size
+# (1024). train.py regroups chunk-sized batches into logical steps before
+# calling gradcache_step. The loader now never collates more than 32 images at
+# a time, num_workers=2 is safe again, and overlap with GPU compute is
+# restored.
+
+backbone:
+  kind: clip
+  pretrained_name: openai/clip-vit-large-patch14
+  freeze_backbone: true
+  freeze_layers: 0
+  embed_dim: 768
+fusion:
+  num_heads: 8
+  num_layers: 2
+  ffn_mult: 4
+  dropout: 0.1
+  gate_hidden_mult: 2
+  use_learned_temperature: true
+  init_temperature: 0.07
+  # Pinned explicitly (2026-09-09, code-audit finding): must not rely on the
+  # ReVUAConfig dataclass default, since the same YAML could otherwise launch
+  # a different architecture after a future code change to that default.
+  use_residual_composition: true
+  residual_alpha_init: 0.05
+attribute_parser:
+  enabled: true
+  parser_backend: rule
+  max_attributes: 8
+  attribute_vocab_size: 512
+  hidden_dim: 512
+reverse_verifier:
+  enabled: true
+  tier: tier1_inverse_consistency
+  top_k: 10
+  hidden_dim: 512
+  tier2_num_layers: 2
+uncertainty_gate:
+  enabled: true
+  variance_hidden_dim: 256
+  neighborhood_k: 10
+  coordination_hidden_dim: 256
+  calibration_temperature_init: 1.0
+  fuse_reverse_disagreement: true
+loss:
+  lambda_disentangle: 0.3
+  lambda_reverse: 0.5
+  lambda_uncertainty: 0.2
+  label_smoothing: 0.1
+  hard_negative_weight: 0.0
+  reverse_negative_margin: 0.2
+data:
+  root: ./datasets
+  train_datasets:
+  - cirr
+  val_dataset: cirr
+  image_size: 224
+  num_workers: 2
+  batch_size: 1024
+  eval_batch_size: 128
+  noise_injection_rate: 0.0
+optim:
+  lr: 0.00032
+  backbone_lr_mult: 0.1
+  weight_decay: 0.05
+  warmup_ratio: 0.06
+  scheduler: cosine
+  max_epochs: 60
+  grad_clip_norm: 5.0
+  amp: true
+  ema_decay: 0.999
+  use_gradcache: true
+  gradcache_chunk_size: 32
+early_stopping:
+  enabled: true
+  monitor: val_recall_at_1
+  mode: max
+  patience: 8
+  min_delta: 0.0001
+  warmup_epochs: 3
+run:
+  seed: 42
+  output_dir: runs/fc_gc1024
+  log_every: 5
+  eval_every_epochs: 1
+  save_top_k: 3
+  device: cuda
+  deterministic: false

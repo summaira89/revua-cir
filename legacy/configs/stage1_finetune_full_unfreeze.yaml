@@ -1,0 +1,131 @@
+# Stage-1 fine-tuning: FULL ViT-L/14 unfreeze, CIRR-only, on RENTED GPU.
+#
+# Runs IN PARALLEL with configs/stage1_finetune.yaml (freeze_layers=20, local
+# 8GB 4060) -- separate output_dir, separate machine, no shared state. This
+# is the full-backbone-unfreeze counterpart: closes MORE of the ~12.7-pt
+# R@10 gap to CLIP4Cir's published 81.86 than partial unfreeze can, at the
+# cost of needing a >=16GB card, which the local 4060 doesn't have. See
+# stage1_finetune.yaml's own history for why partial unfreeze was adopted
+# locally (Kaggle session limits, then local memory limits).
+#
+# STALE NOTE, kept for history: gradcache used to be hard-blocked here (pass
+# 1 encoded under no_grad and injected gradient only into the query head, so
+# an unfrozen backbone got no gradient at all). Fixed 2026-09 via a
+# tied-encoder dual injection -- see gradcache.py's own header and
+# configs/stage1_finetune_full_unfreeze_gradcache.yaml, this config's own
+# gradcache-enabled successor, which supersedes the small-batch (bs=12)
+# numbers below with a real batch_size=192 result.
+#
+# GPU ACTUALLY IN USE: switched from the T4 (15GB) to an NVIDIA L4 (23034
+# MiB / ~23GB) on the Sunway Lumiere cluster, partition gpu-4c-l4-1g -- the
+# T4's real 15GB ceiling was too tight a margin for full unfreeze. Confirmed
+# working via smoke test (torch 2.11.0+cu128, cuda available: True, all
+# checks passed) then REAL memory probe (20 real train() steps per batch
+# size, not an estimate):
+#   bs=8:  peak 15.08 GB reserved, ~1.10 it/s -> ~53.5 min/epoch (3528 steps)
+#   bs=12: peak 17.50 GB reserved, ~1.14 it/s -> ~34.4 min/epoch (2352 steps)
+#   bs=16: peak 20.80 GB reserved, ~0.69 it/s -> ~42.6 min/epoch (1764 steps)
+#   bs=20: OOM at step 17/20 (22.05 GiB capacity exceeded)
+# bs=12 chosen: fastest per-epoch (larger batches did NOT train faster
+# despite fewer steps -- bs=16's per-step slowdown outweighs having fewer
+# steps, likely allocator overhead near the memory ceiling) AND the safest
+# margin (17.50/23 GB, ~5.5 GB headroom vs bs=16's tight ~2.2 GB) against
+# the kind of instance-to-instance GPU variance that caused repeated OOMs on
+# Kaggle earlier in this project. lr rescaled linearly from the bs=32
+# anchor: 2e-5 * 12/32 = 7.5e-6.
+backbone:
+  kind: clip
+  pretrained_name: openai/clip-vit-large-patch14
+  freeze_backbone: false
+  freeze_layers: 0
+  embed_dim: 768
+fusion:
+  num_heads: 8
+  num_layers: 2
+  ffn_mult: 4
+  dropout: 0.1
+  gate_hidden_mult: 2
+  use_learned_temperature: true
+  init_temperature: 0.07
+  # Pinned explicitly (2026-09-09, code-audit finding): must not rely on the
+  # ReVUAConfig dataclass default, since the same YAML could otherwise launch
+  # a different architecture after a future code change to that default.
+  use_residual_composition: true
+  residual_alpha_init: 0.05
+attribute_parser:
+  enabled: true
+  parser_backend: rule
+  max_attributes: 8
+  attribute_vocab_size: 512
+  hidden_dim: 512
+reverse_verifier:
+  enabled: true
+  tier: tier1_inverse_consistency
+  top_k: 10
+  hidden_dim: 512
+  tier2_num_layers: 2
+uncertainty_gate:
+  enabled: true
+  variance_hidden_dim: 256
+  neighborhood_k: 10
+  coordination_hidden_dim: 256
+  calibration_temperature_init: 1.0
+  fuse_reverse_disagreement: true
+loss:
+  lambda_disentangle: 0.3
+  lambda_reverse: 0.5
+  lambda_uncertainty: 0.2
+  label_smoothing: 0.1
+  hard_negative_weight: 0.0
+  reverse_negative_margin: 0.2
+data:
+  # Points at the OLD cir_project's already-downloaded+repaired CIRR/CIRCO
+  # data on the Sunway Lumiere cluster (a separate, unrelated prior project --
+  # only its datasets/ subfolder is reused here, not its code). This new
+  # revua_cir codebase lives in a clean sibling dir (revua_cir_project/), not
+  # inside the old project, to avoid mixing with its different architecture.
+  root: ./datasets
+  train_datasets:
+  - cirr
+  val_dataset: cirr
+  image_size: 224
+  num_workers: 2
+  batch_size: 12
+  eval_batch_size: 128
+  noise_injection_rate: 0.0
+optim:
+  lr: 7.5e-06
+  # NOTE 2026-09-10: this file is STALE/superseded (see header) and not on
+  # any launch path. backbone_lr_mult=0.1 here predates the CLIP4Cir-based
+  # correction made in stage1_finetune_full_unfreeze_gradcache.yaml (job
+  # 6300 overfitting diagnosis -- see that file's header). NOT re-derived
+  # or flagged as wrong here because at this file's own lr=7.5e-6, the
+  # resulting effective backbone LR (7.5e-7) already sits BELOW CLIP4Cir's
+  # 2e-6 anchor, so it would not reproduce job 6300's over-aggressive-LR
+  # overfitting symptom -- but don't use 0.1 as a reference value for any
+  # other full-unfreeze config; use the corrected 0.016667 pattern instead.
+  backbone_lr_mult: 0.1
+  weight_decay: 0.05
+  warmup_ratio: 0.06
+  scheduler: cosine
+  max_epochs: 30
+  grad_clip_norm: 5.0
+  amp: true
+  ema_decay: 0.0
+  use_gradcache: false
+early_stopping:
+  enabled: true
+  monitor: val_recall_at_1
+  mode: max
+  patience: 5
+  min_delta: 0.0001
+  warmup_epochs: 2
+run:
+  seed: 42
+  output_dir: runs/stage1_finetune_full_unfreeze
+  log_every: 25
+  eval_every_epochs: 1
+  save_top_k: 3
+  device: cuda
+  deterministic: false
+  checkpoint_every_n_steps: 50

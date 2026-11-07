@@ -1,0 +1,55 @@
+{
+  "schema": "cirr-towers/1",
+  "split": "val",
+  "n_queries": 4181,
+  "gallery_size": 2297,
+  "gallery_sha256": "ffe81ad0a543cbdbc8936201d8109115e2baffacaf14f95e87dcd53ee2395752",
+  "source": "checkpoint",
+  "checkpoint_load": {
+    "loaded": 654,
+    "missing_frozen": 0,
+    "unexpected": 0
+  },
+  "parity_vs_phase_b": null,
+  "output_name": "towers.npz",
+  "manifest": {
+    "schema": "bbnv-run-manifest/1",
+    "script": "encode_towers.py",
+    "args": {
+      "config": "../edir_work/laptop_config.yaml",
+      "module_combo": "fc",
+      "checkpoint": "../checkpoints/ablation_collective_v3/fc/epoch003.pt",
+      "pretrained": false,
+      "reproduce": null,
+      "out_dir": "../revision_work/towers_fc_2026-11-04",
+      "batch_size": 32,
+      "device": "cuda"
+    },
+    "config_sha256": "08d8cd16d78c4972e6558125224c8455015259cd2dd1344a02001a0726d50e15",
+    "checkpoint_sha256": "8d5c6932ec5183d464d180ac27096c029f8f749afebe34da627f107109edf9dc",
+    "source_sha256": {
+      "bbnv_core.py": "a902a2a51fbdf6544843e77b5b04629ba83a4075ad983b7a2cf30d875c3f78f9",
+      "bbnv_partition.py": "2e83d45c25c7cc61696a4c6ddfcb1a9037279d60db666499dd70f3a6a1224c73",
+      "bbnv_oracle.py": "941331cca6d5d7342eed061dbb073f40deb86689555b9ebc289dfd4217455d44",
+      "bbnv_profile.py": "90ecc96b6a7fae73535947f546b951449207b57c9c36edfce9e7848ccd17349e",
+      "bbnv_provenance.py": "eea2a754939058b1558a0850f03234ded1bc7d7d4f9be30572b144662da26752",
+      "bbnv_manifest.py": "5790bac76d84a92cbb3e807d891a1cae9b1710928623bc3e76ceb64295e1dfe8",
+      "bbnv_extract.py": "e4e532d1480e8b557e943143f676f7c13a91b882ef416db5adb4b18e770857f5",
+      "bbnv_train.py": "339f21c3535ffacca9575a1a5b42570fdbf73ccbfab0d2fc41a07b23a55a9421",
+      "bbnv_score.py": "a82caa458f8420965018debc6494ec96cc779ccd4c959747236ded25fba7a54d",
+      "bbnv_analyze.py": "4d1ee08c36756a93dd118537facada1d84f2e53d33bad92f55553162a23c7638",
+      "cirr_split_windows.py": "aaabd1c68b26a5894c9f4770e6ad043b647748999d261d57b99a7880c6173d97",
+      "cirr_external_windows.py": "e0ae4f5e5f4bd7aa1cf69cf4ceb58b779016c79e0db3c99cbcac224e58766833",
+      "encode_towers.py": "bc4db62651fb0811b7cfcf69d199a9fc50bb8b867fb8e28a10382633cd5ad5a0"
+    },
+    "runtime": {
+      "torch": "2.11.0+cu128",
+      "gpu": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "batch_size": 32
+    }
+  },
+  "wall_seconds": 397.6,
+  "output_files": {
+    "towers.npz": "702b8aa7407ea4e6aef2b5585513caaaedf8bcff0e5f3e0020ad0706baacfc30"
+  }
+}

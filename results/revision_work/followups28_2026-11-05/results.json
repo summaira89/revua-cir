@@ -1,0 +1,175 @@
+{
+ "amendment": "v3.1 \u00a728 (2026-11-05)",
+ "status": "descriptive sensitivity; specified before execution",
+ "inputs_sha256": {
+  "probe": "e9bdbf0cf106b1ea3c92e70adccb2e31cbf85dc5c41cc90fdb9c05de45b84029",
+  "c4c": "505f0e33ef7a9bae8c258c2013e6d907c36a890c033e4049904f185e69cdaed4",
+  "features": "3a91e82caa69479ba6fe18ce93adbcca9345a454cc53812c3105d4927495033f",
+  "cache": "26d7fc552b4ae902d9ecfd0bd4ec2bad329e627536887ae4b241e5d9a85c0308",
+  "s25c": "df703d87f098ebec4684b339b61fc9dff769cb3ee697f3808981431a1e930719",
+  "s25b": "3320c78cc9115b0ca39a9703bb6f3d8ab71ca8f87ba16c4478ceaa03595d23c7",
+  "s20": "a8ef5f658dad278ef66843c79b59365db20cabcb3e9041b025c57a53a357dd30",
+  "s21": "e738bac8bd560a380fbe206551e367efafa92123cd161477a65a2adccb0067f6",
+  "s25a": "469628ab4bc609a42e7fef34ce6644567c6f8059131ee1e96801b79f151f8bcf",
+  "s26c": "7012dd9aef2608e34a58bf1a3265156721dc3c92e67d3aef3b2e46c25295e436"
+ },
+ "population": "CIRR held-out half (2091 queries); clusters = reference images",
+ "own_windows": {
+  "T_vs_base": {
+   "delta_pp": 9.660449545671927,
+   "fixed": 303,
+   "broken": 101,
+   "query_bootstrap_ci": [
+    7.8431372549019605,
+    11.477761836441895
+   ],
+   "cluster_bootstrap_ci": [
+    7.7997111218103035,
+    11.529184756391702
+   ],
+   "cluster_p_two_sided": 0.00019998000199980003,
+   "n_clusters": 1398,
+   "ci_width_ratio": 1.0260959697249608
+  },
+  "T_vs_verifier_fusion": {
+   "delta_pp": 7.317073170731708,
+   "fixed": 261,
+   "broken": 108,
+   "query_bootstrap_ci": [
+    5.5954088952654235,
+    9.086561453849832
+   ],
+   "cluster_bootstrap_ci": [
+    5.526932084309133,
+    9.134385461501674
+   ],
+   "cluster_p_two_sided": 0.00019998000199980003,
+   "n_clusters": 1398,
+   "ci_width_ratio": 1.0333130153026855
+  },
+  "T+V_vs_T": {
+   "delta_pp": 0.04782400765184122,
+   "fixed": 3,
+   "broken": 2,
+   "query_bootstrap_ci": [
+    -0.14347202295552366,
+    0.28694404591104733
+   ],
+   "cluster_bootstrap_ci": [
+    -0.1462701121404193,
+    0.2440214738897023
+   ],
+   "cluster_p_two_sided": 0.8257174282571743,
+   "n_clusters": 1398,
+   "ci_width_ratio": 0.9067774515433158
+  }
+ },
+ "clip4cir_windows": {
+  "C2_T_vs_base": {
+   "delta_pp": 4.017216642754663,
+   "fixed": 158,
+   "broken": 74,
+   "query_bootstrap_ci": [
+    2.582496413199426,
+    5.4519368723099
+   ],
+   "cluster_bootstrap_ci": [
+    2.580028666985189,
+    5.4660810151293315
+   ],
+   "cluster_p_two_sided": 0.00019998000199980003,
+   "n_clusters": 1398,
+   "ci_width_ratio": 1.0057892433282336
+  },
+  "C4_V_vs_base": {
+   "delta_pp": 0.3825920612147298,
+   "fixed": 26,
+   "broken": 18,
+   "query_bootstrap_ci": [
+    -0.2391200382592061,
+    1.0043041606886658
+   ],
+   "cluster_bootstrap_ci": [
+    -0.23809523809523808,
+    1.0086455331412103
+   ],
+   "cluster_p_two_sided": 0.24817518248175183,
+   "n_clusters": 1398,
+   "ci_width_ratio": 1.0026672894828514
+  },
+  "C5_T+V_vs_T": {
+   "delta_pp": -0.3825920612147298,
+   "fixed": 40,
+   "broken": 48,
+   "query_bootstrap_ci": [
+    -1.2434241989478718,
+    0.5260640841702535
+   ],
+   "cluster_bootstrap_ci": [
+    -1.2639766650461837,
+    0.4814636494944632
+   ],
+   "cluster_p_two_sided": 0.412958704129587,
+   "n_clusters": 1398,
+   "ci_width_ratio": 0.9864096480282412
+  },
+  "deployed_vs_pretrained_fused": {
+   "delta_pp": 3.634624581539933,
+   "fixed": 160,
+   "broken": 84,
+   "query_bootstrap_ci": [
+    2.152080344332855,
+    5.06934481109517
+   ],
+   "cluster_bootstrap_ci": [
+    2.164705882352941,
+    5.143134400776322
+   ],
+   "cluster_p_two_sided": 0.00019998000199980003,
+   "n_clusters": 1398,
+   "ci_width_ratio": 1.0209662347579163
+  },
+  "deployed_vs_fc_fused": {
+   "delta_pp": 0.7651841224294595,
+   "fixed": 57,
+   "broken": 41,
+   "query_bootstrap_ci": [
+    -0.1912960306073649,
+    1.6738402678144428
+   ],
+   "cluster_bootstrap_ci": [
+    -0.19011406844106463,
+    1.715102429728442
+   ],
+   "cluster_p_two_sided": 0.12438756124387561,
+   "n_clusters": 1398,
+   "ci_width_ratio": 1.0214891532493433
+  },
+  "fc_vs_pretrained_fused": {
+   "delta_pp": 2.8694404591104736,
+   "fixed": 173,
+   "broken": 113,
+   "query_bootstrap_ci": [
+    1.2434241989478718,
+    4.4476327116212335
+   ],
+   "cluster_bootstrap_ci": [
+    1.2518054886856043,
+    4.467680608365019
+   ],
+   "cluster_p_two_sided": 0.0007999200079992001,
+   "n_clusters": 1398,
+   "ci_width_ratio": 1.0036410261566653
+  }
+ },
+ "source_sha256": {
+  "revision_followups8.py": "2f16066d70349516046d7932f5e3d89c5effee1b021ad5119e3a7b5aae0618a0",
+  "revision_followups6.py": "47ca25f7b584fa53cf1b7b41c7d04772fd689488ca09c2a58619497829afe8cc",
+  "revision_followups5.py": "50919bdbc36d9a7d03924a6bfb56ca45be06077cede119093ffc54e1219b965f",
+  "revision_followups2.py": "a6eb04f5a0e8cfb933dc6cee7ee62289a53ab65c008f72ebde24e9abee60d7e7",
+  "revision_followups.py": "39f72cf51f8e661342c8f8f71c778aea9ae1125c213dbd0585e934dc19e127a9",
+  "fusion_controls.py": "a00f27e398dd709a3c2af6f796c7c2748636411634330e3bb58803da26bbd448",
+  "bbnv_policy.py": "fb7d98bc5ff83e0f3a29f2d97f7f520c765bf5e477ed0701f621e96637256f60"
+ },
+ "wall_seconds": 14.7
+}

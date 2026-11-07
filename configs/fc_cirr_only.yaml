@@ -1,0 +1,84 @@
+# FC-only / ablation base config: CIRR ALONE (no FashionIQ mixing), frozen backbone.
+# Regenerated from default.yaml -- edit that file for shared settings.
+backbone:
+  kind: clip
+  pretrained_name: openai/clip-vit-large-patch14
+  freeze_backbone: true
+  freeze_layers: 0
+  embed_dim: 768
+fusion:
+  num_heads: 8
+  num_layers: 2
+  ffn_mult: 4
+  dropout: 0.1
+  gate_hidden_mult: 2
+  use_learned_temperature: true
+  init_temperature: 0.07
+  # Pinned explicitly (2026-09-09, code-audit finding): must not rely on the
+  # ReVUAConfig dataclass default, since the same YAML could otherwise launch
+  # a different architecture after a future code change to that default.
+  use_residual_composition: true
+  residual_alpha_init: 0.05
+attribute_parser:
+  enabled: true
+  parser_backend: rule
+  max_attributes: 8
+  attribute_vocab_size: 512
+  hidden_dim: 512
+reverse_verifier:
+  enabled: true
+  tier: tier1_inverse_consistency
+  top_k: 10
+  hidden_dim: 512
+  tier2_num_layers: 2
+uncertainty_gate:
+  enabled: true
+  variance_hidden_dim: 256
+  neighborhood_k: 10
+  coordination_hidden_dim: 256
+  calibration_temperature_init: 1.0
+  fuse_reverse_disagreement: true
+loss:
+  lambda_disentangle: 0.3
+  lambda_reverse: 0.5
+  lambda_uncertainty: 0.2
+  label_smoothing: 0.1
+  # Dormant everywhere else in this repo (fixed 2026-09-09, code-audit
+  # finding #4) -- see default.yaml's matching comment for why.
+  hard_negative_weight: 0.0
+  reverse_negative_margin: 0.2
+data:
+  root: ./datasets
+  train_datasets:
+  - cirr
+  val_dataset: cirr
+  image_size: 224
+  num_workers: 2
+  batch_size: 64
+  eval_batch_size: 128
+  noise_injection_rate: 0.0
+optim:
+  lr: 2.0e-05
+  backbone_lr_mult: 0.1
+  weight_decay: 0.05
+  warmup_ratio: 0.06
+  scheduler: cosine
+  max_epochs: 30
+  grad_clip_norm: 5.0
+  amp: true
+  ema_decay: 0.999
+early_stopping:
+  enabled: true
+  monitor: val_recall_at_1
+  mode: max
+  patience: 5
+  min_delta: 0.0001
+  warmup_epochs: 2
+run:
+  seed: 42
+  output_dir: runs/fc_cirr_only
+  log_every: 50
+  eval_every_epochs: 1
+  save_top_k: 3
+  device: cuda
+  deterministic: false

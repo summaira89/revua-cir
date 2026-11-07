@@ -1,0 +1,138 @@
+# SHORT REAL-TRAINING VERIFICATION (Stage 3 of the pre-flight sequence) for
+# stage1_finetune_full_unfreeze_gradcache.yaml's newly-finalized batch_size=
+# 192 / gradcache_chunk_size=8 / lr=1.2e-4 combo (2026-09-07).
+#
+# Purpose: the dry run (job 6244) only proved the pipeline runs without
+# crashing over 5 steps -- it does NOT tell you whether lr=1.2e-4 (a 16x
+# jump from the old bs=12 anchor of 7.5e-6) is actually a GOOD learning rate
+# for this batch size, or whether it's aggressive enough to diverge/NaN
+# partway through an epoch once the scheduler leaves warmup. This config
+# runs a handful of REAL epochs on REAL CIRR data so that failure (loss
+# spikes, NaN, val R@1 cratering instead of climbing) is caught in ~1 hour,
+# not at hour 20+ of the full 30-epoch run.
+#
+# Differences from stage1_finetune_full_unfreeze_gradcache.yaml (everything
+# else identical -- same backbone/fusion/loss/data/optim settings):
+#   - optim.max_epochs: 30 -> 5 (just enough epochs to see a real trend:
+#     does train loss fall smoothly, does val R@1 climb epoch over epoch)
+#   - early_stopping.enabled: true -> false (we WANT to see all 5 epochs'
+#     trend even if epoch 1 looks like a plateau -- early stopping here
+#     would hide exactly the signal this run exists to produce)
+#   - run.output_dir: separate dir, so this never collides with or
+#     contaminates the real full run's checkpoints/logs
+#   - run.save_top_k: 1 (this run's checkpoints are disposable verification
+#     artifacts, not the real thing worth keeping 3 of)
+#
+# What to look for in the log:
+#   - train `total` loss should fall or at least not diverge/spike across
+#     the 5 epochs (compare epoch 0's first-few-steps total against epoch
+#     4's -- shouldn't be going UP)
+#   - no NaN/inf anywhere (the dry run already checked isfinite per-step,
+#     but only for 5 STEPS, not 5 EPOCHs post-warmup where the scheduler
+#     has ramped to full lr=1.2e-4)
+#   - val_recall_at_1 after epoch 0 vs epoch 4: should show an upward trend,
+#     even a modest one -- if it's flat/noisy near random chance across all
+#     5 epochs, that's a signal the lr is wrong (too high: loss not
+#     descending; too low: no visible progress in only 5 epochs) before
+#     committing to the full 30-epoch/~1-day run
+#
+# If this looks healthy: copy run.output_dir back to the real config's
+# value (or just resubmit with the real config) and launch
+# the full 30-epoch run. If loss diverges or NaNs: the lr is too high --
+# halve it (6e-5) and rerun this same short verification before trying the
+# full run again, rather than guessing blind.
+backbone:
+  kind: clip
+  pretrained_name: openai/clip-vit-large-patch14
+  freeze_backbone: false
+  freeze_layers: 0
+  embed_dim: 768
+fusion:
+  num_heads: 8
+  num_layers: 2
+  ffn_mult: 4
+  dropout: 0.1
+  gate_hidden_mult: 2
+  use_learned_temperature: true
+  init_temperature: 0.07
+  # Pinned explicitly (2026-09-09, code-audit finding): must not rely on the
+  # ReVUAConfig dataclass default, since the same YAML could otherwise launch
+  # a different architecture after a future code change to that default.
+  use_residual_composition: true
+  residual_alpha_init: 0.05
+attribute_parser:
+  enabled: true
+  parser_backend: rule
+  max_attributes: 8
+  attribute_vocab_size: 512
+  hidden_dim: 512
+reverse_verifier:
+  enabled: true
+  tier: tier1_inverse_consistency
+  top_k: 10
+  hidden_dim: 512
+  tier2_num_layers: 2
+  use_xbm: false
+  xbm_queue_size: 1024
+  xbm_warmup_steps: 1000
+uncertainty_gate:
+  enabled: true
+  variance_hidden_dim: 256
+  neighborhood_k: 10
+  coordination_hidden_dim: 256
+  calibration_temperature_init: 1.0
+  fuse_reverse_disagreement: true
+loss:
+  lambda_disentangle: 0.3
+  lambda_reverse: 0.5
+  lambda_uncertainty: 0.2
+  label_smoothing: 0.1
+  hard_negative_weight: 0.0
+  reverse_negative_margin: 0.2
+data:
+  root: ./datasets
+  train_datasets:
+  - cirr
+  val_dataset: cirr
+  image_size: 224
+  num_workers: 2
+  batch_size: 192
+  eval_batch_size: 128
+  noise_injection_rate: 0.0
+optim:
+  lr: 1.2e-04
+  # CORRECTED 2026-09-10 (real overfitting diagnosed in job 6300 -- see
+  # stage1_finetune_full_unfreeze_gradcache.yaml's own header for the full
+  # explanation and CLIP4Cir citation): was 0.1 (effective backbone LR
+  # 1.2e-5, 6x higher than CLIP4Cir's own validated 2e-6 for the identical
+  # full-CLIP-fine-tune-on-CIRR scenario). This file's whole purpose is
+  # verifying the training config BEFORE the real run, so it must carry the
+  # same fix -- left at the old value, this file would validate the WRONG
+  # LR and could reproduce the exact overfitting job 6300 showed instead of
+  # catching it early.
+  backbone_lr_mult: 0.016667
+  weight_decay: 0.05
+  warmup_ratio: 0.06
+  scheduler: cosine
+  max_epochs: 5
+  grad_clip_norm: 5.0
+  amp: true
+  ema_decay: 0.0
+  use_gradcache: true
+  gradcache_chunk_size: 8
+early_stopping:
+  enabled: false
+  monitor: val_recall_at_1
+  mode: max
+  patience: 5
+  min_delta: 0.0001
+  warmup_epochs: 2
+run:
+  seed: 42
+  output_dir: runs/verify_full_unfreeze_gradcache
+  log_every: 25
+  eval_every_epochs: 1
+  save_top_k: 1
+  device: cuda
+  deterministic: false
+  checkpoint_every_n_steps: 50

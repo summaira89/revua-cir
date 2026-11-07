@@ -1,0 +1,140 @@
+# SHORT XBM VERIFICATION RUN -- tests whether Cross-Batch Memory (Wang et
+# al., CVPR 2020, arXiv:1912.06798) fixes RV's collapsed discrimination
+# under the new batch_size=192/gradcache_chunk_size=8/lr=1.2e-4 config
+# (2026-09-08).
+#
+# Trigger: job 6258 (the real 30-epoch gradcache-ONLY run, same batch/lr,
+# use_xbm=false) showed diag_rv_cos_gap flat at ~0.0000-0.0002 through at
+# least epoch 6 -- RV's cos_sim for the true target vs. its selected
+# negative are essentially indistinguishable, meaning RV is not learning to
+# discriminate, consistent with the project's known unresolved finding
+# (RV reranking hurts at convergence, semi-hard mining alone did not fix
+# it). XBM was the literature-grounded candidate fix (decouples the
+# negative-mining source from the live/converging embedding space -- see
+# reverse_verifier.py's CrossBatchMemory class and config.py's
+# ReverseVerifierConfig for the full citation/rationale), already
+# implemented and unit-tested (tests/test_smoke.py::test_xbm_cross_batch_
+# memory, ::test_xbm_under_gradcache) but never yet tested on real data.
+#
+# This is a CHEAP first look, not the final word: 5 epochs, not 30. Given
+# limited GPU quota, the question this run answers is narrow but important:
+# does diag_rv_cos_gap even start moving away from zero once XBM is active,
+# or does it stay flat like the gradcache-only run? If it's still flat after
+# 5 epochs (and XBM's queue is confirmed is_ready=True well before the run
+# ends -- xbm_warmup_steps=1000 CHUNK-enqueues, and chunks_per_step=192/8=24
+# means is_ready by logical step ~42 of 735 total across 5 epochs, so the
+# queue has ample time to be active for the bulk of this run), that is
+# meaningful evidence XBM alone isn't the fix either -- cheap way to find
+# out before committing a full ~17h run to it. If the gap visibly grows,
+# that justifies a full run for a real comparable R@1/reranking-gain number.
+#
+# ONLY DIFFERENCE from stage1_verify_full_unfreeze_gradcache.yaml (job
+# 6248's config, which already validated this same batch_size/lr combo is
+# stable): reverse_verifier.use_xbm: false -> true. Same 5-epoch length,
+# same disabled early stopping (want the full 5-epoch trend), same separate
+# output_dir so this never collides with 6258's or 6248's checkpoints.
+#
+# What to check in the log:
+#   - diag_rv_cos_gap trend across the 5 epochs: still ~0 (XBM doesn't
+#     help) vs. visibly positive and growing (XBM helps)
+#   - topk_target_rv_argmax_rate (val metric): ~10% is chance-level (10
+#     candidates); meaningfully above 10% would corroborate a real
+#     discrimination improvement, not just a diag_rv_cos_gap artifact
+#   - the usual health checks: no NaN/divergence, val_recall_at_1 climbing
+#     roughly like job 6248's baseline trajectory (22.55/30.70/33.90/35.20/
+#     34.70) -- XBM should not make base retrieval WORSE
+backbone:
+  kind: clip
+  pretrained_name: openai/clip-vit-large-patch14
+  freeze_backbone: false
+  freeze_layers: 0
+  embed_dim: 768
+fusion:
+  num_heads: 8
+  num_layers: 2
+  ffn_mult: 4
+  dropout: 0.1
+  gate_hidden_mult: 2
+  use_learned_temperature: true
+  init_temperature: 0.07
+  # Pinned explicitly (2026-09-09, code-audit finding): must not rely on the
+  # ReVUAConfig dataclass default, since the same YAML could otherwise launch
+  # a different architecture after a future code change to that default.
+  use_residual_composition: true
+  residual_alpha_init: 0.05
+attribute_parser:
+  enabled: true
+  parser_backend: rule
+  max_attributes: 8
+  attribute_vocab_size: 512
+  hidden_dim: 512
+reverse_verifier:
+  enabled: true
+  tier: tier1_inverse_consistency
+  top_k: 10
+  hidden_dim: 512
+  tier2_num_layers: 2
+  use_xbm: true
+  xbm_queue_size: 1024
+  xbm_warmup_steps: 1000
+uncertainty_gate:
+  enabled: true
+  variance_hidden_dim: 256
+  neighborhood_k: 10
+  coordination_hidden_dim: 256
+  calibration_temperature_init: 1.0
+  fuse_reverse_disagreement: true
+loss:
+  lambda_disentangle: 0.3
+  lambda_reverse: 0.5
+  lambda_uncertainty: 0.2
+  label_smoothing: 0.1
+  hard_negative_weight: 0.0
+  reverse_negative_margin: 0.2
+data:
+  root: ./datasets
+  train_datasets:
+  - cirr
+  val_dataset: cirr
+  image_size: 224
+  num_workers: 2
+  batch_size: 192
+  eval_batch_size: 128
+  noise_injection_rate: 0.0
+optim:
+  lr: 1.2e-04
+  # CORRECTED 2026-09-10 (real overfitting diagnosed in job 6300 -- see
+  # stage1_finetune_full_unfreeze_gradcache.yaml's own header for the full
+  # explanation and CLIP4Cir citation): was 0.1 (effective backbone LR
+  # 1.2e-5, 6x higher than CLIP4Cir's own validated 2e-6 for the identical
+  # full-CLIP-fine-tune-on-CIRR scenario). This file's whole purpose is
+  # verifying the training config (with XBM) BEFORE the real run, so it
+  # must carry the same fix -- left at the old value, this file would
+  # validate the WRONG LR and could reproduce the exact overfitting job
+  # 6300 showed instead of catching it early.
+  backbone_lr_mult: 0.016667
+  weight_decay: 0.05
+  warmup_ratio: 0.06
+  scheduler: cosine
+  max_epochs: 5
+  grad_clip_norm: 5.0
+  amp: true
+  ema_decay: 0.0
+  use_gradcache: true
+  gradcache_chunk_size: 8
+early_stopping:
+  enabled: false
+  monitor: val_recall_at_1
+  mode: max
+  patience: 5
+  min_delta: 0.0001
+  warmup_epochs: 2
+run:
+  seed: 42
+  output_dir: runs/verify_xbm_full_unfreeze_gradcache
+  log_every: 25
+  eval_every_epochs: 1
+  save_top_k: 1
+  device: cuda
+  deterministic: false
+  checkpoint_every_n_steps: 50

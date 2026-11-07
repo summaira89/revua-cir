@@ -1,0 +1,215 @@
+{
+ "amendment": "v3.1 \u00a726 (2026-11-04)",
+ "part": "posthoc",
+ "inputs_sha256": {
+  "probe": "e9bdbf0cf106b1ea3c92e70adccb2e31cbf85dc5c41cc90fdb9c05de45b84029",
+  "c4c": "505f0e33ef7a9bae8c258c2013e6d907c36a890c033e4049904f185e69cdaed4",
+  "features": "3a91e82caa69479ba6fe18ce93adbcca9345a454cc53812c3105d4927495033f",
+  "cache": "26d7fc552b4ae902d9ecfd0bd4ec2bad329e627536887ae4b241e5d9a85c0308",
+  "s25c": "df703d87f098ebec4684b339b61fc9dff769cb3ee697f3808981431a1e930719",
+  "s25b": "3320c78cc9115b0ca39a9703bb6f3d8ab71ca8f87ba16c4478ceaa03595d23c7"
+ },
+ "P": {
+  "status": "exploratory: proposed after seeing \u00a725",
+  "lambda": {
+   "A3": 2.0,
+   "A4": 0.25,
+   "A5": [
+    3.0,
+    0.25
+   ],
+   "A5_fixedT": [
+    2.0,
+    0.0
+   ]
+  },
+  "A5_fixedT_verifier_excluded_by_tuning": true,
+  "report": {
+   "r1": {
+    "A1": 45.38498326159732,
+    "A3": 49.40219990435198,
+    "A4": 45.76757532281206,
+    "A5": 49.01960784313725,
+    "A5_fixedT": 49.40219990435198,
+    "T_C_alone": 32.902917264466765,
+    "T_O_alone": 41.31994261119082
+   },
+   "verifier_isolated_A5fixedT_minus_A3": {
+    "delta_pp": 0.0,
+    "fixed": 0,
+    "broken": 0,
+    "p_mcnemar": 1.0,
+    "ci_low": 0.0,
+    "ci_high": 0.0
+   },
+   "utility_vs_A1": {
+    "A3": {
+     "r1": 49.40219990435198,
+     "rescues": 158,
+     "breaks": 74,
+     "utility": 0.004782400765184123,
+     "clustered": {
+      "diff": 0.004782400765184123,
+      "ci_low": -0.016022620169651274,
+      "ci_high": 0.02489431658055425,
+      "p_two_sided": 0.6691330866913309,
+      "n_clusters": 1398
+     }
+    },
+    "A4": {
+     "r1": 45.76757532281205,
+     "rescues": 26,
+     "breaks": 18,
+     "utility": -0.004782400765184123,
+     "clustered": {
+      "diff": -0.004782400765184123,
+      "ci_low": -0.014349332013854528,
+      "ci_high": 0.004257332071901609,
+      "p_two_sided": 0.32896710328967105,
+      "n_clusters": 1398
+     }
+    },
+    "A5": {
+     "r1": 49.01960784313726,
+     "rescues": 192,
+     "breaks": 116,
+     "utility": -0.01912960306073649,
+     "clustered": {
+      "diff": -0.01912960306073649,
+      "ci_low": -0.04358124111795358,
+      "ci_high": 0.004880429477794046,
+      "p_two_sided": 0.11338866113388661,
+      "n_clusters": 1398
+     }
+    },
+    "A5_fixedT": {
+     "r1": 49.40219990435198,
+     "rescues": 158,
+     "breaks": 74,
+     "utility": 0.004782400765184123,
+     "clustered": {
+      "diff": 0.004782400765184123,
+      "ci_low": -0.016022620169651274,
+      "ci_high": 0.02489431658055425,
+      "p_two_sided": 0.6691330866913309,
+      "n_clusters": 1398
+     }
+    }
+   },
+   "utility_A5_minus_A3": {
+    "diff": -0.02391200382592061,
+    "ci_low": -0.03814973772055317,
+    "ci_high": -0.010727611940298507,
+    "p_two_sided": 0.0005999400059994001,
+    "n_clusters": 1398
+   },
+   "encoder_text_only_T_O_minus_T_C": {
+    "delta_pp": 8.417025346724056,
+    "fixed": 355,
+    "broken": 179,
+    "p_mcnemar": 2.1335314305222406e-14,
+    "ci_low": 6.2649450023912,
+    "ci_high": 10.56910569105691
+   }
+  },
+  "full": {
+   "r1": {
+    "A1": 45.89811049988041,
+    "A3": 49.58143984692657,
+    "A4": 46.304711791437455,
+    "A5": 49.43793350872997,
+    "A5_fixedT": 49.58143984692657,
+    "T_C_alone": 32.958622339153315,
+    "T_O_alone": 41.13848361635972
+   },
+   "verifier_isolated_A5fixedT_minus_A3": {
+    "delta_pp": 0.0,
+    "fixed": 0,
+    "broken": 0,
+    "p_mcnemar": 1.0,
+    "ci_low": 0.0,
+    "ci_high": 0.0
+   },
+   "utility_vs_A1": {
+    "A3": {
+     "r1": 49.58143984692657,
+     "rescues": 315,
+     "breaks": 161,
+     "utility": -0.0016742406122937097,
+     "clustered": {
+      "diff": -0.0016742406122937097,
+      "ci_low": -0.016508861374119933,
+      "ci_high": 0.012699905926622766,
+      "p_two_sided": 0.8547145285471452,
+      "n_clusters": 2165
+     }
+    },
+    "A4": {
+     "r1": 46.304711791437455,
+     "rescues": 50,
+     "breaks": 33,
+     "utility": -0.003826835685242765,
+     "clustered": {
+      "diff": -0.003826835685242765,
+      "ci_low": -0.010062290368950648,
+      "ci_high": 0.002387774594078319,
+      "p_two_sided": 0.23577642235776422,
+      "n_clusters": 2165
+     }
+    },
+    "A5": {
+     "r1": 49.43793350872997,
+     "rescues": 377,
+     "breaks": 229,
+     "utility": -0.019373355656541497,
+     "clustered": {
+      "diff": -0.019373355656541497,
+      "ci_low": -0.03629324945560126,
+      "ci_high": -0.0028999516674722086,
+      "p_two_sided": 0.024397560243975602,
+      "n_clusters": 2165
+     }
+    },
+    "A5_fixedT": {
+     "r1": 49.58143984692657,
+     "rescues": 315,
+     "breaks": 161,
+     "utility": -0.0016742406122937097,
+     "clustered": {
+      "diff": -0.0016742406122937097,
+      "ci_low": -0.016508861374119933,
+      "ci_high": 0.012699905926622766,
+      "p_two_sided": 0.8547145285471452,
+      "n_clusters": 2165
+     }
+    }
+   },
+   "utility_A5_minus_A3": {
+    "diff": -0.017699115044247787,
+    "ci_low": -0.027066569129480616,
+    "ci_high": -0.008680974198215577,
+    "p_two_sided": 0.00019998000199980003,
+    "n_clusters": 2165
+   },
+   "encoder_text_only_T_O_minus_T_C": {
+    "delta_pp": 8.17986127720641,
+    "fixed": 694,
+    "broken": 352,
+    "p_mcnemar": 1.9439723136000046e-26,
+    "ci_low": 6.696962449174839,
+    "ci_high": 9.710595551303516
+   }
+  },
+  "utility_note": "utility of the \u00a725 policies, which were tuned for R@1, not for utility"
+ },
+ "source_sha256": {
+  "revision_followups6.py": "47ca25f7b584fa53cf1b7b41c7d04772fd689488ca09c2a58619497829afe8cc",
+  "revision_followups5.py": "50919bdbc36d9a7d03924a6bfb56ca45be06077cede119093ffc54e1219b965f",
+  "revision_followups3.py": "c97c86fff4beb91ba9aeeac567b741220bdea653b070e1e588f89034b488e3a6",
+  "revision_followups2.py": "a6eb04f5a0e8cfb933dc6cee7ee62289a53ab65c008f72ebde24e9abee60d7e7",
+  "revision_followups.py": "39f72cf51f8e661342c8f8f71c778aea9ae1125c213dbd0585e934dc19e127a9",
+  "fusion_controls.py": "a00f27e398dd709a3c2af6f796c7c2748636411634330e3bb58803da26bbd448",
+  "bbnv_policy.py": "fb7d98bc5ff83e0f3a29f2d97f7f520c765bf5e477ed0701f621e96637256f60"
+ },
+ "wall_seconds": 144.2
+}

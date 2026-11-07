@@ -1,0 +1,217 @@
+# Stage-1 fine-tuning: PARTIALLY unfreeze the CLIP backbone (freeze_layers=20
+# out of 24 vision layers, all 12 text layers frozen), CIRR-only.
+#
+# CURRENT STATE (2026-08-17): runs LOCALLY on an 8GB RTX 4060 Laptop, not
+# Kaggle. See the "UPDATE 2026-08-17" note further down for why: full
+# unfreeze's per-epoch cost (14112 steps/epoch @ bs=2, ~67h for 30 epochs)
+# never fit inside a single Kaggle 12h session, and repeated session deaths
+# (idle timeout, connection drops) kept wiping /kaggle/working before
+# progress could be banked. Partial unfreeze cuts trainable CLIP params
+# 427.6M -> 90.6M, which both fits comfortably in 8GB at batch_size=4 and
+# halves steps/epoch (7056), trading off some of the full-unfreeze fine-tuning
+# benefit for something that actually finishes. The full-unfreeze history
+# below is kept for reference in case a >=16GB card becomes available again.
+#
+# This is the OTHER lever (vs GradCache's negative-count fix): closing the
+# ~12.7-pt R@10 gap to CLIP4Cir by actually fine-tuning the encoders the way
+# CLIP4Cir's two-stage protocol does, instead of training a composer on top of
+# frozen features.
+#
+# STALE NOTE, kept for history: gradcache used to be hard-blocked for any
+# unfrozen backbone (pass 1 encoded under no_grad and injected gradient only
+# into the query head, so an unfrozen backbone got NO gradient and would
+# have trained silently wrong). Fixed 2026-09 via a tied-encoder dual
+# injection -- see gradcache.py's own header and configs/stage1_finetune_
+# full_unfreeze_gradcache.yaml, which runs freeze_backbone=false WITH
+# gradcache successfully. This config still doesn't set use_gradcache: true
+# itself (partial unfreeze at small batch_size=4 doesn't need it), but that's
+# a choice, not a hard limitation anymore.
+#
+# ORIGINAL (full-unfreeze) numbers, kept for history:
+#   trainable:  38M (frozen) -> 465M (full ViT-L/14 unfreeze)
+#   optimizer:  7.45 GB fp32 AdamW state alone at 465M params -- the reason
+#               that needed a 16GB card and not the local 8GB one
+#   batch_size: 32 (conservative starting point; measure real peak memory on
+#               the T4 and raise it if headroom allows -- see the notebook's
+#               memory-probe cell)
+#   lr:         back to 2e-5 base (bs=32 scale, not gradcache's bs=1024-scaled
+#               3.2e-4); backbone_lr_mult=0.1 keeps the pretrained backbone's
+#               *effective* LR an order below the new heads', standard
+#               practice for fine-tuning a pretrained encoder
+#
+# checkpoint_every_n_steps remains a general disconnect/interruption safety
+# net (sleep, reboot, any process kill), not specifically a Kaggle mitigation
+# now that this runs locally. Left at 50 -- checkpoint size is now much
+# smaller (90.6M vs 465M trainable params to save), so writes are cheap
+# relative to the interval either way.
+
+# UPDATE 2026-08-13: batch_size corrected 32 -> 16 based on REAL memory
+# measurement on a Kaggle T4 (15.6 GB), not estimate. Full unfreeze memory
+# is fixed(~2.76 GB: weights+first-step optimizer moments) + ~0.654 GB/image
+# (measured bs=2/4/8/16: 4.12/5.38/7.99/13.22 GB peak, near-perfect linear
+# fit). bs=32 extrapolates to ~23.7 GB and OOM'd exactly as predicted;
+# bs=16 measures 13.27 GB, leaving ~2.3 GB headroom for allocator
+# fragmentation. lr halved 2e-5 -> 1e-5 to match (linear batch-size scaling,
+# same rule used for gradcache's bs=1024 LR earlier in this project).
+
+# UPDATE 2026-08-13 (2): batch_size 16 -> 12. bs=16 OOM'd on a real Kaggle
+# T4 session: "14.56 GiB total capacity" vs the 15.6 GB the earlier probe
+# session reported -- different physical GPUs/driver reservations across
+# Kaggle sessions leave different headroom, so a measurement pinned to
+# exactly one session's free memory is not safely portable to the next.
+# bs=12 predicts ~10.6 GB (fixed 2.76 GB + 0.654 GB/img, same fit as before),
+# leaving >3.5 GB margin against this kind of instance-to-instance variance.
+# lr linearly rescaled 1e-5 -> 7.5e-6.
+
+# UPDATE 2026-08-13 (3): batch_size 12 -> 4, ema_decay 0.999 -> 0. Two real
+# findings, not another guess:
+#
+# 1. train.py had a genuine memory leak (fixed separately): step_losses
+#    held undetached tensors, so each step briefly retained the PREVIOUS
+#    step's full autograd graph too. Measured locally: allocated jumped
+#    3.7->7.4 GB between step 0 and step 1 before the fix, flat after.
+#
+# 2. EVEN WITH the leak fixed, EMA (ema_decay>0) deepcopies the entire
+#    465M-param model as a second live copy (EMA.__init__) -- every earlier
+#    memory probe in this project was run WITHOUT constructing an EMA object,
+#    so it silently under-measured every real training config that has EMA on
+#    (the shipped default). Measured with EMA+leak-fix together, bs=4: peak
+#    12.78 GB -- already tight on a 14.56 GiB Kaggle session. Disabling EMA
+#    for stage-1 (checkpoint quality difference is minor; the point of this
+#    run is closing the fine-tuning gap, not final-model polish) and measuring
+#    WITHOUT it: fixed=2.01 GB + 1.720 GB/image (bs=4/6 -> 8.89/12.33 GB,
+#    steeper than earlier pre-leak-fix estimates). bs=4 predicts ~8.89 GB,
+#    real margin against session-to-session variance (14.56-15.6 GiB seen
+#    so far). lr linearly rescaled from the original bs=32 anchor: 2e-5*4/32.
+
+# UPDATE 2026-08-13 (4): batch_size 4 -> 2. Every batch-size ESTIMATE made
+# in this file today (32, 16, 12, 4) underpredicted real memory and failed at
+# least once -- the activation cost of full ViT-L/14 unfreeze scales steeper
+# than modeled each time, and per-session Kaggle GPU headroom varies
+# (14.56-15.6 GiB seen on nominally-identical T4s). Stopping the estimate
+# chase: bs=2 is the one MEASURED value that actually ran clean -- 20 real
+# steps, real CIRR data, the real train.py loop, steady 7.9 GB on an 8 GB
+# local card (97% utilization, no growth). Get a working run on Kaggle
+# first; raise batch_size later once the pipeline is proven end-to-end there
+# and you can afford another OOM as a controlled experiment, not a blocker.
+
+# UPDATE 2026-08-17: switched strategy from full unfreeze to PARTIAL unfreeze
+# (see backbone.freeze_layers above) to get off Kaggle entirely -- repeated
+# session deaths (idle timeout, power/connection drops) were wiping
+# /kaggle/working faster than progress could be banked, and even a clean bs=2
+# run would take ~67h for 30 epochs (14112 steps/epoch measured), impossible
+# in any single 12h session. freeze_layers=20 cuts trainable CLIP params
+# 427.6M -> 90.6M (measured directly via backbone.py's freeze logic), which
+# changes the memory budget enough to run locally.
+#
+# Re-measured batch size from scratch for the new trainable-param count (old
+# bs=2 estimate does not carry over -- different parameter count changes both
+# optimizer-state and activation-gradient memory). Real train() loop, real
+# CIRR data (28225 triplets), local 8GB RTX 4060 Laptop:
+#   bs=4, 60 real steps: peak 7.135 GB reserved (headroom ~1 GB)
+#   bs=6, 40 real steps: peak 8.491 GB reserved -- EXCEEDS the 8.188 GB card
+#   bs=8, 8 real steps:  peak 8.395 GB reserved -- already over at just 8 steps
+# Peak grows with steps-seen (6.08 GB at 8 steps -> 7.135 GB at 60 steps for
+# bs=4), so short probes underestimate real peak -- same lesson as the
+# full-unfreeze saga above. bs=4 is the only value confirmed stable over a
+# longer run. lr rescaled linearly from the bs=32 anchor: 2e-5 * 4/32.
+#
+# This now targets LOCAL training, not Kaggle: no session limit, no
+# disconnect risk, existing checkpoint/resume system still applies for
+# ordinary interruptions (sleep, reboot, etc). data.root points at the local
+# dataset junction instead of /kaggle/working/datasets.
+backbone:
+  kind: clip
+  pretrained_name: openai/clip-vit-large-patch14
+  freeze_backbone: false
+  # UPDATE: partial unfreeze instead of full (was 0). Full ViT-L/14 unfreeze
+  # (427.6M CLIP params trainable) forced batch_size down to 2 to fit an 8-15GB
+  # card, making an epoch (14112 steps @ bs=2) take ~2.2h measured on a Kaggle
+  # T4 -- 30 epochs would be ~67h, impossible in a single 12h Kaggle session,
+  # and repeated session deaths were losing checkpointed progress anyway.
+  # freeze_layers=20 freezes vision layers [0:20] (of 24) and ALL 12 text
+  # layers (slicing [:20] on a 12-layer list freezes everything, which is
+  # fine here -- text fine-tuning matters less since the composer/fusion
+  # module already processes text-image interaction downstream). Leaves the
+  # last 4 vision blocks + composer/heads trainable: 90.6M params, a 4.7x
+  # reduction from 427.6M (measured via backbone.py's freeze logic directly).
+  # Standard fine-tuning practice: early layers encode generic visual
+  # features that transfer fine, late layers encode task-specific ones.
+  freeze_layers: 20
+  embed_dim: 768
+fusion:
+  num_heads: 8
+  num_layers: 2
+  ffn_mult: 4
+  dropout: 0.1
+  gate_hidden_mult: 2
+  use_learned_temperature: true
+  init_temperature: 0.07
+  # Pinned explicitly (2026-09-09, code-audit finding): must not rely on the
+  # ReVUAConfig dataclass default, since the same YAML could otherwise launch
+  # a different architecture after a future code change to that default.
+  use_residual_composition: true
+  residual_alpha_init: 0.05
+attribute_parser:
+  enabled: true
+  parser_backend: rule
+  max_attributes: 8
+  attribute_vocab_size: 512
+  hidden_dim: 512
+reverse_verifier:
+  enabled: true
+  tier: tier1_inverse_consistency
+  top_k: 10
+  hidden_dim: 512
+  tier2_num_layers: 2
+uncertainty_gate:
+  enabled: true
+  variance_hidden_dim: 256
+  neighborhood_k: 10
+  coordination_hidden_dim: 256
+  calibration_temperature_init: 1.0
+  fuse_reverse_disagreement: true
+loss:
+  lambda_disentangle: 0.3
+  lambda_reverse: 0.5
+  lambda_uncertainty: 0.2
+  label_smoothing: 0.1
+  hard_negative_weight: 0.0
+  reverse_negative_margin: 0.2
+data:
+  root: ./datasets
+  train_datasets:
+  - cirr
+  val_dataset: cirr
+  image_size: 224
+  num_workers: 2
+  batch_size: 4
+  eval_batch_size: 128
+  noise_injection_rate: 0.0
+optim:
+  lr: 2.5e-06
+  backbone_lr_mult: 0.1
+  weight_decay: 0.05
+  warmup_ratio: 0.06
+  scheduler: cosine
+  max_epochs: 30
+  grad_clip_norm: 5.0
+  amp: true
+  ema_decay: 0.0
+  use_gradcache: false
+early_stopping:
+  enabled: true
+  monitor: val_recall_at_1
+  mode: max
+  patience: 5
+  min_delta: 0.0001
+  warmup_epochs: 2
+run:
+  seed: 42
+  output_dir: runs/stage1_finetune
+  log_every: 25
+  eval_every_epochs: 1
+  save_top_k: 3
+  device: cuda
+  deterministic: false
+  checkpoint_every_n_steps: 50

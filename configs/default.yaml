@@ -1,0 +1,119 @@
+# Default configuration for ReVUA-CIR (Section 4-8 of the paper framework).
+# Every field here maps 1:1 to a dataclass in revua_cir/config.py -- override
+# any subset on the CLI or by editing a copy of this file.
+
+backbone:
+  kind: clip                       # clip | open_clip | tiny (tiny = offline smoke-test fallback)
+  pretrained_name: openai/clip-vit-large-patch14
+  # true => 38M trainable (modules + adapters), 4.91 GB at bs 64, 30 epochs in
+  # ~8.4 h on an 8 GB RTX 4060. false => 465M trainable, needs >=16 GB (Kaggle
+  # P100/T4). Frozen also matches the CLIP4Cir baseline protocol in Section 7.
+  freeze_backbone: true
+  freeze_layers: 0
+  embed_dim: 768
+
+fusion:                            # Forward Composer (Section 4.1)
+  num_heads: 8
+  num_layers: 2
+  ffn_mult: 4
+  dropout: 0.1
+  gate_hidden_mult: 2
+  use_learned_temperature: true
+  init_temperature: 0.07
+  # Pinned explicitly (2026-09-09, code-audit finding): must not rely on the
+  # ReVUAConfig dataclass default, since the same YAML could otherwise launch
+  # a different architecture after a future code change to that default.
+  use_residual_composition: true
+  residual_alpha_init: 0.05
+
+attribute_parser:                  # Attribute Edit Parser (Section 4.2)
+  enabled: true
+  parser_backend: rule             # rule | llm | hybrid
+  max_attributes: 8
+  attribute_vocab_size: 512
+  hidden_dim: 512
+
+reverse_verifier:                  # Reverse Verifier (Section 4.3)
+  enabled: true
+  tier: tier1_inverse_consistency             # tier1_inverse_consistency (cheap, default) | tier2_reconstruction (stretch goal)
+  top_k: 10
+  hidden_dim: 512
+  tier2_num_layers: 2
+
+uncertainty_gate:                  # Uncertainty Gate (Section 4.4)
+  enabled: true
+  variance_hidden_dim: 256
+  neighborhood_k: 10
+  coordination_hidden_dim: 256
+  calibration_temperature_init: 1.0
+  fuse_reverse_disagreement: true  # Section 4.5 connective mechanism
+
+loss:                              # Connective joint loss (Section 4.5)
+  lambda_disentangle: 0.3
+  lambda_reverse: 0.5
+  lambda_uncertainty: 0.2
+  label_smoothing: 0.1
+  # Dormant everywhere else in this repo (fixed 2026-09-09, code-audit
+  # finding #4): every real gradcache/cluster training config already ships
+  # 0.0 -- gradcache's in-batch reweighting is not chunk-decomposable (see
+  # stage1_finetune_full_unfreeze_gradcache.yaml's own comment), so the
+  # mechanism cannot even run under the actual training path this project
+  # uses. Matched to 0.0 here too so this base config isn't the one
+  # remaining place implying the feature is part of the reported method.
+  hard_negative_weight: 0.0
+  # Reverse Verifier in-batch negative hinge. Without negatives the verifier is
+  # trained only on ground-truth targets, collapses to "everything verifies",
+  # and inference-time reranking becomes a no-op.
+  reverse_negative_margin: 0.2
+
+data:
+  # Junctions to D:\cir_data\* live here -- see README "Local data status".
+  # Verified 8 Aug 2026: 0 missing images across all train/val splits.
+  root: ./datasets
+  train_datasets: [fashioniq, cirr]
+  val_dataset: cirr
+  image_size: 224
+  # Windows spawns (not forks) workers: each is a full process holding its own
+  # dataset copy, and image tensors cross process boundaries via shared memory
+  # that counts against the system commit limit. With 8 workers on 15.7 GB RAM
+  # this exhausted commit charge ~150 steps in and hung the run with
+  # "Couldn't open shared file mapping ... error code 1455"
+  # (ERROR_COMMITMENT_LIMIT). 2 is safe here and is not the bottleneck -- the
+  # GPU forward/backward dominates, not image loading.
+  num_workers: 2
+  # bs 64 measured at 4.91 GB / 1,396 ms-step on an 8 GB card. bs 128 fits at
+  # 7.84 GB but leaves no headroom and measured ~5.8x slower per sample.
+  batch_size: 64
+  eval_batch_size: 128
+  noise_injection_rate: 0.0        # Ablation #6
+
+optim:
+  lr: 2.0e-5
+  backbone_lr_mult: 0.1
+  weight_decay: 0.05
+  warmup_ratio: 0.06
+  scheduler: cosine
+  max_epochs: 30
+  grad_clip_norm: 5.0
+  amp: true
+  ema_decay: 0.999
+
+early_stopping:
+  enabled: true
+  # R@1, not R@10. RV/UG reranking permutes only the top-k (k=10), so R@10 is
+  # *provably invariant* to it -- selecting on R@10 makes model selection blind
+  # to the modules the paper is about. R@1 is also CIRR's primary reported metric.
+  monitor: val_recall_at_1
+  mode: max
+  patience: 5
+  min_delta: 1.0e-4
+  warmup_epochs: 2
+
+run:
+  seed: 42
+  output_dir: ./runs/revua_cir_base
+  log_every: 50
+  eval_every_epochs: 1
+  save_top_k: 3
+  device: cuda
+  deterministic: false

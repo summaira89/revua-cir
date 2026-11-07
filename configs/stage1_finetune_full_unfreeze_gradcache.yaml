@@ -1,0 +1,253 @@
+# Stage-1 fine-tuning: FULL ViT-L/14 unfreeze, CIRR-only, WITH gradient
+# caching for a large effective batch size, on the Sunway Lumiere L40S.
+#
+# ARCHITECTURE CHANGE 2026-09-08 (applies here via fusion.use_residual_
+# composition's default, not an explicit key in this file): ForwardComposer
+# now builds q = norm(q0 + alpha*CAGF_output) where q0 = norm(norm(image_
+# pooled) + norm(text_pooled)) is CLIP's own pretrained additive
+# composition, alpha a learned scalar starting near 0. Fixes a real bug
+# (fusion.py, found via code audit) where the prior CAGF-only path computed
+# `fused = fused + text_pooled * 0.0` -- CLIP's pretrained text embedding
+# discarded entirely (zero forward contribution, zero gradient). Any run
+# using this config from 2026-09-08 onward is NOT directly comparable to
+# job 6258 (trained before this fix) on that basis alone, in addition to the
+# gradcache/RNG/AMP/XBM fixes already noted. Set fusion.use_residual_
+# composition: false explicitly to reproduce the pre-fix behavior for a
+# controlled ablation.
+#
+# Supersedes stage1_finetune_full_unfreeze.yaml's batch_size=12 (11 in-batch
+# negatives), which scored R@1 21.90 -- WORSE than partial-freeze's
+# batch_size=24 (R@1 29.35), despite training strictly more parameters. A
+# 2026-09 research pass (architecture-gap analysis) identified batch size /
+# negative count as the best-evidenced cause: CLIP4Cir's own paper
+# (Baldrati et al., ACM TOMM 2023, arXiv:2308.11485, Section 4.1) reports
+# Stage-1 batch_size=192 for RN50x4 (which reaches R@1=44.82 on CIRR test) --
+# 16x our old batch_size=12. Their own ablation (Table 2/Section 4.3) also
+# shows partial fine-tuning (image-only or text-only) costs a large chunk of
+# performance vs full fine-tuning, consistent with our own partial-vs-full
+# freeze results once batch-size starvation is accounted for.
+#
+# gradcache.py was previously HARD-BLOCKED for a trainable backbone (pass 3
+# only injected gradient for the query/composer path, never the target-image
+# path) -- fixed 2026-09 via a tied-encoder dual injection (query-side +
+# target-side, each a separate forward() through the same shared backbone,
+# gradients accumulate correctly with no retain_graph needed -- confirmed
+# against the official GradCache reference implementation,
+# github.com/luyug/GradCache, and the original paper, Gao et al.,
+# arXiv:2101.06983). Also fixed: UG's neighborhood-deviation loss and RV's
+# semi-hard negative search both needed FULL-BATCH statistics, not a tiny
+# gradcache chunk's -- see revua_cir.py's forward() docstring and
+# gradcache.py's own header for the full history. Verified via
+# tests/test_smoke.py::test_gradcache_trainable_backbone_matches_plain_step
+# (exact, TinyBackbone) and
+# ::test_gradcache_trainable_backbone_full_module_stack_bounded_divergence
+# (fc+aep+rv+ug, backbone/composer/ug.fusion within 5% of a plain full-batch
+# step; RV/AEP/ug.variance_head show real but bounded divergence from
+# gradcache's chunk-restricted negative pool -- an accepted, documented
+# limitation, not a bug).
+#
+# batch_size / gradcache_chunk_size / lr: FINALIZED 2026-09-07 from a real
+# memory probe (lumiere/probe_full_unfreeze_gradcache_l40s.sbatch, job 6239)
+# on the ACTUAL GPU partition (gpu-2c-l40s-1g, L40S 46GB), 20 real steps per
+# chunk size, sweeping all divisors of batch_size=192:
+#   chunk=4:  11.65 GB reserved, 23.41 s/logical_step
+#   chunk=6:  13.26 GB reserved, 15.07 s/logical_step
+#   chunk=8:  15.42 GB reserved, 12.65 s/logical_step  <- CHOSEN
+#   chunk=12: 17.69 GB reserved, 11.54 s/logical_step
+#   chunk=16: 20.77 GB reserved, 11.11 s/logical_step
+#   chunk=24: 26.53 GB reserved, 11.01 s/logical_step
+#   chunk=32: 32.55 GB reserved, 10.82 s/logical_step
+# chunk=8 chosen: going from chunk=8->32 quadruples memory (15.4->32.6 GB)
+# for only a 14% speed gain -- steep diminishing returns past chunk=8/12.
+# chunk=8 also leaves the most headroom on the 46GB card, matching the
+# safety-margin reasoning already used for the bs=12/L4 choice in
+# stage1_finetune_full_unfreeze.yaml. Also confirmed correct (not just fast)
+# via the full-pipeline dry run at this exact chunk size (job 6244: 5 real
+# training steps, finite losses, checkpoint round-trip OK, peak 17.66 GB
+# reserved with XBM warm-up also active).
+#
+# lr rescaled LINEARLY from the same validated anchor stage1_finetune_full_
+# unfreeze.yaml itself used (2e-5 @ bs=32, that project's own precedent):
+#   lr = 2e-5 * (192/32) = 1.2e-4
+# a 16x lr jump for the 16x batch-size jump (12->192), consistent with
+# standard linear LR scaling (Goyal et al. 2017). warmup_ratio=0.06 is left
+# unchanged (~260 steps of warmup at 147 steps/epoch -- deliberately not
+# shortened, since linear-scaling papers pair a big lr jump with careful
+# warmup, not a lighter one).
+#
+# backbone_lr_mult CORRECTED 2026-09-10 (this paragraph supersedes the
+# original 2026-09-07 note above, which is WRONG and kept fixed below --
+# job 6300, trained under that original value, peaked at epoch 2
+# (R@1=33.80) then declined despite train loss still falling: classic
+# overfitting). The original backbone_lr_mult=0.1 gave an effective
+# backbone LR of 1.2e-5 -- 6x higher than CLIP4Cir's own validated number
+# for the IDENTICAL scenario (full CLIP joint fine-tuning on CIRR's ~29K
+# triplets): CLIP4Cir (Baldrati et al., ACM TOMM 2023, arXiv:2308.11485)
+# uses LR=2e-6, confirmed against BOTH the paper's Section 4.1 text AND
+# the actual `--learning-rate` default in their released code
+# (src/clip_fine_tune.py), independently re-verified by a second research
+# pass against those same primary sources. WRF4CIR (arXiv:2604.05583)
+# independently corroborates that CIRR-scale full-CLIP-fine-tuning
+# typically peaks within the first ~5 epochs before overfitting when the
+# backbone LR is too high -- matching job 6300's exact symptom. Fix:
+# backbone_lr_mult = 2e-6 / 1.2e-4 = 0.016667, giving effective backbone
+# LR = 1.2e-4 * 0.016667 ~= 2e-6, matching CLIP4Cir exactly. head LR
+# (lr=1.2e-4, applied to composer/AEP/RV/UG) is left unchanged -- only the
+# backbone's own LR was the diagnosed problem.
+#
+# use_xbm stays FALSE for this run on purpose (see reverse_verifier.use_xbm
+# below): isolating the batch-size effect from the XBM effect was the
+# explicit reason logged here originally, and that reasoning still holds --
+# XBM becomes its own ablation once this gradcache-only baseline exists.
+backbone:
+  kind: clip
+  pretrained_name: openai/clip-vit-large-patch14
+  freeze_backbone: false
+  freeze_layers: 0
+  embed_dim: 768
+fusion:
+  num_heads: 8
+  num_layers: 2
+  ffn_mult: 4
+  dropout: 0.1
+  gate_hidden_mult: 2
+  use_learned_temperature: true
+  init_temperature: 0.07
+  # Pinned explicitly (2026-09-09, code-audit finding): must not rely on the
+  # ReVUAConfig dataclass default, since the same YAML could otherwise launch
+  # a different architecture after a future code change to that default.
+  # NOTE: job 6258 (the completed real training run referenced elsewhere in
+  # this repo) predates this fix and predates the fusion.py normalization
+  # fix -- it is not directly comparable to runs launched from this file at
+  # its current settings.
+  use_residual_composition: true
+  residual_alpha_init: 0.05
+attribute_parser:
+  enabled: true
+  parser_backend: rule
+  max_attributes: 8
+  attribute_vocab_size: 512
+  hidden_dim: 512
+reverse_verifier:
+  enabled: true
+  tier: tier1_inverse_consistency
+  top_k: 10
+  hidden_dim: 512
+  tier2_num_layers: 2
+  # XBM disabled by default here -- enable only in a dedicated ablation run
+  # once the base gradcache full-unfreeze number is established, so the two
+  # changes (large batch, XBM) are measured separately, not confounded.
+  use_xbm: false
+  xbm_queue_size: 1024
+  xbm_warmup_steps: 1000
+uncertainty_gate:
+  enabled: true
+  variance_hidden_dim: 256
+  neighborhood_k: 10
+  coordination_hidden_dim: 256
+  calibration_temperature_init: 1.0
+  fuse_reverse_disagreement: true
+loss:
+  lambda_disentangle: 0.3
+  lambda_reverse: 0.5
+  lambda_uncertainty: 0.2
+  label_smoothing: 0.1
+  # MUST stay 0 under gradcache: hard_negative_weight's in-batch reweighting
+  # is not chunk-decomposable (gradcache.py raises ValueError if this > 0
+  # while use_gradcache is on).
+  hard_negative_weight: 0.0
+  reverse_negative_margin: 0.2
+data:
+  root: ./datasets
+  train_datasets:
+  - cirr
+  val_dataset: cirr
+  image_size: 224
+  num_workers: 2
+  batch_size: 192  # FINALIZED, see header -- effective/logical batch size, not the DataLoader's own per-step size (that's gradcache_chunk_size)
+  eval_batch_size: 128
+  noise_injection_rate: 0.0
+optim:
+  lr: 1.2e-04  # head LR (composer/AEP/RV/UG) -- unchanged; see backbone_lr_mult below for
+               # why the BACKBONE'S effective LR was corrected 2026-09-10.
+  # CORRECTED 2026-09-10 (real overfitting diagnosed in job 6300, the first
+  # full training run of the corrected architecture): backbone_lr_mult was
+  # 0.1, giving an effective backbone LR of 1.2e-4 * 0.1 = 1.2e-5. Job 6300
+  # showed the classic full-CLIP-finetune-on-small-data overfitting
+  # signature -- train retrieval loss fell monotonically and smoothly
+  # (2.95->0.97 over 8 epochs) while val R@1 PEAKED at epoch 2 (33.80) and
+  # plateaued/declined afterward (32.0-33.2) despite training loss still
+  # falling -- textbook overfitting, not instability (no NaN/Inf, no
+  # exploding losses, residual_alpha and cos_q0_q_final both stayed
+  # well-behaved throughout).
+  #
+  # Verified against a primary source before changing anything: CLIP4Cir
+  # (Baldrati et al., ACM TOMM 2023, arXiv:2308.11485) is the one published
+  # method found doing the SAME scenario -- full CLIP backbone fine-tuning
+  # (both encoders, jointly, no separate head yet) on CIRR's ~29K triplets
+  # (this project's own CIRR training split: 28,225 triplets, closely
+  # matching). Confirmed directly from BOTH the paper text ("we employed
+  # AdamW optimizer with a learning rate of 2e-6 and a weight decay
+  # coefficient of 1e-2", Section 4.1) AND github.com/ABaldrati/CLIP4Cir's
+  # actual `src/clip_fine_tune.py` script default
+  # (`"--learning-rate", default=2e-6`) -- not just the README's example
+  # command, the script's own code default. This project's prior effective
+  # backbone LR (1.2e-5) was 6x higher than CLIP4Cir's validated number for
+  # the identical scenario. A second source (WRF4CIR, arXiv 2604.05583,
+  # whose central thesis is diagnosing exactly this train/val divergence in
+  # VLP-based CIR fine-tuning) independently reports that "the best
+  # validation performance typically occurs within the first five
+  # epochs -- well before the model fully converges on the training set"
+  # for CIRR-scale full-backbone fine-tuning -- matching job 6300's
+  # epoch-2 peak almost exactly, and framing it as the DOCUMENTED norm for
+  # this training regime, not evidence of a code defect.
+  #
+  # backbone_lr_mult corrected 0.1 -> 0.016667 (~1/60) so effective
+  # backbone LR = 1.2e-4 * 0.016667 = 2.0e-6, matching CLIP4Cir's number
+  # exactly, while leaving `lr` (the head LR for composer/AEP/RV/UG, which
+  # has no CLIP4Cir precedent to anchor against -- CLIP4Cir has no
+  # comparable multi-module head trained jointly with the backbone)
+  # unchanged. This isolates the fix to exactly the parameter the evidence
+  # actually applies to, so the next run's result change (if any) can be
+  # attributed to this specific correction, not a confounded multi-variable
+  # change.
+  backbone_lr_mult: 0.016667
+  weight_decay: 0.05
+  warmup_ratio: 0.06
+  scheduler: cosine
+  max_epochs: 30
+  grad_clip_norm: 5.0
+  amp: true
+  ema_decay: 0.0
+  use_gradcache: true
+  gradcache_chunk_size: 8  # FINALIZED, see header
+early_stopping:
+  enabled: true
+  monitor: val_recall_at_1
+  mode: max
+  # TIGHTENED 2026-09-10 (quota-safety pass, before relaunching the LR-
+  # corrected run): was patience=5/warmup_epochs=2. Job 6300's own val R@1
+  # trajectory (28.30/33.00/33.80/32.65/33.15/31.85/32.30/32.00) was
+  # simulated against both settings: patience=5/warmup=2 does not trigger
+  # until epoch 7 (5 non-improving epochs after the epoch-2 peak), while
+  # patience=3/warmup=1 triggers at epoch 5 (2 epochs / ~70 min earlier at
+  # this run's ~34 min/epoch pace) -- same best-checkpoint result (33.80 @
+  # epoch 2) either way, since save_top_k=1 always keeps the true peak
+  # regardless of when the stopper fires. warmup_epochs=1 was checked
+  # against epoch 1's own trajectory (33.00, still improving) so it cannot
+  # false-trigger on a lucky/unlucky first epoch here. This is a pure
+  # quota-safety tightening -- it changes only how many wasted post-peak
+  # epochs a repeat of job 6300's pattern would cost, not the model or the
+  # result that gets kept.
+  patience: 3
+  min_delta: 0.0001
+  warmup_epochs: 1
+run:
+  seed: 42
+  output_dir: runs/stage1_finetune_full_unfreeze_gradcache
+  log_every: 25
+  eval_every_epochs: 1
+  save_top_k: 1  # keep bounded -- see lumiere/cleanup_redundant_checkpoints.sbatch for why 3 was a disk-fill risk
+  device: cuda
+  deterministic: false
+  checkpoint_every_n_steps: 50
